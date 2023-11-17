@@ -1,6 +1,7 @@
 package io.vertx.spi.cluster.zookeeper;
 
 import io.vertx.core.Vertx;
+import io.vertx.core.VertxOptions;
 import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.test.core.VertxTestBase;
 import org.junit.Test;
@@ -36,6 +37,16 @@ public class ConsumerRoundRobinTest extends VertxTestBase {
           }
         });
     return future;
+  }
+
+  @Override
+  protected VertxOptions getOptions() {
+    // Prevent `BlockedThreadChecker` log information from appearing during debugging
+    VertxOptions options = super.getOptions();
+    long         blockedThreadCheckInterval = 60 * 60 * 1000L;
+    options.setBlockedThreadCheckInterval(blockedThreadCheckInterval);
+
+    return options;
   }
 
   @Override
@@ -75,3 +86,4 @@ public class ConsumerRoundRobinTest extends VertxTestBase {
   }
 
 }
+

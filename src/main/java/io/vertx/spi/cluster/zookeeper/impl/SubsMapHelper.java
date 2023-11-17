@@ -19,6 +19,7 @@ import org.apache.curator.framework.recipes.cache.TreeCacheEvent;
 import org.apache.curator.framework.recipes.cache.TreeCacheListener;
 import org.apache.zookeeper.CreateMode;
 
+import java.text.MessageFormat;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -131,6 +132,35 @@ public class SubsMapHelper implements TreeCacheListener {
         fireRegistrationUpdateEvent(address);
         promise.complete();
       } else {
+        String nodeFullPath = fullPath.apply(address, registrationInfo);
+        if (curator.checkExists().forPath(nodeFullPath) == null) {
+          java.util.concurrent.atomic.AtomicInteger retryCount = new java.util.concurrent.atomic.AtomicInteger(0);
+          vertx.setPeriodic(100, 100, timerID -> {
+            try {
+	      log.warn(MessageFormat.format("The Zookeeper node to be deleted does not exist: {0}, retry: {1} times", nodeFullPath, retryCount.incrementAndGet()));
+              if (curator.checkExists().forPath(nodeFullPath) != null) {
+                vertx.cancelTimer(timerID);
+                curator.delete().guaranteed().forPath(nodeFullPath);
+		log.warn(MessageFormat.format("After retrying: {0} times, Zookeeper node was successfully deleted: {1}", retryCount.get(), nodeFullPath));
+                promise.complete();
+                return;
+              }
+
+              if (retryCount.get() > 10) {
+                vertx.cancelTimer(timerID);
+                String errMessage = MessageFormat.format("After retrying {0} times, the Zookeeper node to be deleted does not yet exist: {1}", retryCount.get(), nodeFullPath);
+                log.warn(errMessage);
+                throw new IllegalStateException(errMessage);
+              }
+            } catch (Exception e) {
+              log.error(e.getMessage(), e);
+              promise.fail(e);
+            }
+          });
+
+          return;
+        }
+
         curator.delete().guaranteed().inBackground((c, e) -> {
           if (e.getType() == CuratorEventType.DELETE) {
             vertx.runOnContext(aVoid -> {
@@ -207,3 +237,4 @@ public class SubsMapHelper implements TreeCacheListener {
   }
 
 }
+
